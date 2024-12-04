@@ -1,96 +1,68 @@
 import streamlit as st
 import pandas as pd
-from sentence_transformers import SentenceTransformer, util
-import torch
-import time
+import openai
+import tempfile
 
-# Load the SentenceTransformer model
-@st.cache_resource
-def load_model():
-    return SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu', cache_folder='./')
+# Set your OpenAI API key from environment variable or directly
+openai.api_key = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI(api_key=openai.api_key)
 
-model = load_model()
+# Streamlit app
+st.title("Keyword Categorizer")
+st.write("Upload your keywords file and input your categories.")
 
-# Streamlit UI
-st.title("Keyword Category Classifier")
-st.write("Paste your candidate labels and upload a `keywords.txt` file. The app will classify the keywords based on the closest category.")
+# Upload file
+uploaded_file = st.file_uploader("Choose a keywords file (TXT)", type="txt")
 
-# User input: Candidate labels
-labels_input = st.text_area(
-    "Paste your candidate labels (one label per line):",
-    placeholder="Enter labels here...\nTopic>Category>Subcategory>Subcategory2\nTopic>Category>Subcategory\nTopic>Category",
-    height=200,
-)
+# Input categories
+categories_text = st.text_area("Paste your candidate categories here", height=300)
+candidate_labels = categories_text.splitlines()
 
-# User input: Keywords file
-uploaded_keywords_file = st.file_uploader("Upload Keywords File (keywords.txt)", type=["txt"])
+# Process button
+process = st.button("Classify Keywords")
 
-if labels_input and uploaded_keywords_file:
-    # Process candidate labels
-    candidate_labels = [label.strip() for label in labels_input.split('\n') if label.strip()]
-    
-    if not candidate_labels:
-        st.error("No valid labels provided. Please ensure each label is on a new line.")
-    else:
-        # Encode candidate labels
-        st.write("Encoding candidate labels...")
-        start_time = time.time()
-        label_embeddings = model.encode(candidate_labels, convert_to_tensor=True)
+if process and uploaded_file and candidate_labels:
+    # Read the keywords from the uploaded file
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        keywords = open(tmp_file.name).read().splitlines()
 
-        # Read keywords
-        st.write("Processing keywords...")
-        keywords = uploaded_keywords_file.read().decode('utf-8').strip().split('\n')
+    # Prepare the output data
+    results = []
 
-        # Prepare results
-        results = []
-
-        # Add progress bar
-        progress_bar = st.progress(0)
-
-        # Process each keyword
-        for i, keyword in enumerate(keywords):
-            sequence_embedding = model.encode(keyword, convert_to_tensor=True)
-            cos_scores = util.cos_sim(sequence_embedding, label_embeddings)[0]
-
-            # Get the top result
-            top_result = max(zip(cos_scores, candidate_labels), key=lambda x: x[0])
-            score, label = top_result
-
-            # Split the label into parts
-            label_parts = label.split('>')
-            topic = label_parts[0] if len(label_parts) > 0 else ""
-            category = label_parts[1] if len(label_parts) > 1 else ""
-            subcategory = label_parts[2] if len(label_parts) > 2 else ""
-            subcategory2 = label_parts[3] if len(label_parts) > 3 else ""
-
-            results.append({
-                'Keyword': keyword,
-                'Topic': topic,
-                'Category': category,
-                'Subcategory': subcategory,
-                'Subcategory2': subcategory2,
-                'Similarity Score': round(score.item(), 3)
-            })
-
-            # Update progress bar
-            progress_bar.progress((i + 1) / len(keywords))
-
-        # Stop timer and display elapsed time
-        elapsed_time = time.time() - start_time
-        st.success(f"Processing completed in {elapsed_time:.2f} seconds.")
-
-        # Convert results to DataFrame
-        results_df = pd.DataFrame(results)
-
-        # Display results
-        st.write("Classification Results:")
-        st.dataframe(results_df)
-
-        # Download results as CSV
-        csv_file = results_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download Results as CSV",
-            data=csv_file,
-            file_name="classification_results.csv",
-            mime="text/csv"
+    # Function to use OpenAI for categorization
+    def categorize_with_openai(keyword, candidate_labels):
+        prompt = f"Given the following categories, classify the keyword '{keyword}' into one or two categories:\n\nCategories:\n- " + "\n- ".join(candidate_labels) + "\n\n"
+        response = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="gpt-4o",
+            temperature=0.2  # Low temperature for deterministic results
         )
+        choices = response.choices[0].message.content.strip().split('\n')[:2]
+        return [choice.strip() for choice in choices]
+
+    # Loop through each keyword
+    with st.spinner('Classifying keywords...'):
+        for keyword in keywords:
+            top_categories = categorize_with_openai(keyword, candidate_labels)
+            for category in top_categories:
+                if category:
+                    parts = category.split(">")
+                    while len(parts) < 5:  # Ensure we have 5 columns
+                        parts.append("")
+                    results.append({
+                        'Keyword': keyword,
+                        'Topic': parts[0],
+                        'Category': parts[1] if len(parts) > 1 else "",
+                        'Subcategory': parts[2] if len(parts) > 2 else "",
+                        'Subcategory2': parts[3] if len(parts) > 3 else ""
+                    })
+
+    # Convert results to DataFrame
+    df = pd.DataFrame(results)
+
+    # Display results and offer download
+    st.success("Classification complete!")
+    st.dataframe(df)
+    csv = df.to_csv(index=False)
+    st.download_button("Download CSV", csv, "classification_results.csv", "text/csv")
