@@ -33,7 +33,7 @@ if uploaded_file and categories_text:
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="gpt-4o",
-            temperature=0.2  # Low temperature for deterministic results
+            temperature=0.05  # Low temperature for deterministic results
         )
         choices = response.choices[0].message.content.strip().split('\n')[:2]
         return [choice.strip() for choice in choices]
