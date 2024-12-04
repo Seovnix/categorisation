@@ -4,7 +4,7 @@ import openai
 import tempfile
 
 # Set your OpenAI API key from environment variable or directly
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = st.secrets("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=openai.api_key)
 
 # Streamlit app
