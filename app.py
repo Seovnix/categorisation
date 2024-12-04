@@ -1,10 +1,11 @@
 import openai
 import pandas as pd
 import streamlit as st
+from io import BytesIO
 
 # Streamlit Secrets Management for OpenAI API Key
 api_key = st.secrets["OPENAI_API_KEY"]
-openai.api_key = api_key
+client = openai.OpenAI(api_key=api_key)
 
 # Streamlit interface
 st.title("Keyword Categorization using OpenAI")
@@ -34,13 +35,14 @@ if label_file is not None and keyword_file is not None:
                   f"based on its meaning:\n\nKeyword: {keyword}\nCategories:\n- " +
                   "\n- ".join(candidate_labels) +
                   "\n\n Provide only the category, no other text.")
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",  # Ensure this is the correct model ID
+        response = client.chat.completions.create(
+            model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.05  # Low temperature for deterministic results
         )
 
-        choices = response.choices[0].message.content.strip().split('\n')[:2]
+        # Extract the response content
+        content = response.choices[0].message.content.strip()
+        choices = content.split('\n')[:2]
         return [choice.strip() for choice in choices]
 
     # Initialize a progress bar
@@ -71,9 +73,13 @@ if label_file is not None and keyword_file is not None:
         st.write("Categorization Results", df)
 
         # Button to download the dataframe as an Excel file
-        @st.cache
+        @st.cache_data
         def convert_df_to_excel(df):
-            return df.to_excel(index=False)
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False)
+            processed_data = output.getvalue()
+            return processed_data
 
         if st.download_button(
             label="Download Results as Excel",
