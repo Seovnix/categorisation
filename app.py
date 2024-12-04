@@ -499,7 +499,7 @@ with tab_main:
                                 )
                                 try:
                                     response = openai.ChatCompletion.create(
-                                        model="gpt-4",
+                                        model="GPT-4o mini",
                                         messages=[
                                             {"role": "system", "content": "You are a helpful assistant."},
                                             {"role": "user", "content": prompt},
