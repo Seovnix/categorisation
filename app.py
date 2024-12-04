@@ -78,7 +78,7 @@ with tab_main:
     with st.sidebar.form(key="gsc_oauth_form"):
         st.markdown("")
 
-        # Using standard Streamlit link instead of streamlit_elements
+        # Using standard Streamlit link for OAuth
         st.markdown(
             f"""
             [🔗 Sign-in with Google](https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent)
@@ -246,16 +246,31 @@ with tab_main:
                         )
 
                     with col2:
-                        date_range = st.date_input(
-                            "Select Date Range",
-                            value=(pd.to_datetime('today') - pd.Timedelta(days=30), pd.to_datetime('today')),
-                            help="Select the start and end dates for the data range."
+                        timescale = st.selectbox(
+                            "Date Range",
+                            (
+                                "Last 7 days",
+                                "Last 30 days",
+                                "Last 3 months",
+                                "Last 6 months",
+                                "Last 12 months",
+                                "Last 16 months",
+                            ),
+                            index=1,
+                            help="Specify the date range for the data.",
                         )
-                        if isinstance(date_range, tuple) and len(date_range) == 2:
-                            start_date, end_date = date_range
-                            selected_days = (end_date - start_date).days
-                        else:
-                            selected_days = 30  # Default 30 days
+
+                        # Convert timescale to days
+                        timescale_mapping = {
+                            "Last 7 days": -7,
+                            "Last 30 days": -30,
+                            "Last 3 months": -91,
+                            "Last 6 months": -182,
+                            "Last 12 months": -365,
+                            "Last 16 months": -486,
+                        }
+
+                        selected_days = timescale_mapping.get(timescale, -30)
 
                     st.write("")
 
@@ -437,9 +452,9 @@ with tab_main:
                                 st.warning("🚨 The fetched data does not contain the 'query' dimension.")
                                 st.stop()
 
-                # ================================== #
-                # Separate Form for Keyword Categorization
-                # ================================== #
+    # ================================== #
+    # Separate Form for Keyword Categorization
+    # ================================== #
                 if df is not None and 'query' in df.columns:
                     st.markdown("---")
                     st.subheader("Keyword Categorization using OpenAI")
@@ -536,80 +551,80 @@ with tab_main:
                                     st.warning("🚨 No categorization results to display.")
                         else:
                             st.warning("🚨 Please paste your candidate labels into the text area.")
-                # ================================== #
-                # End of Keyword Categorization
-                # ================================== #
+            # ================================== #
+            # End of Keyword Categorization
+            # ================================== #
 
-                # ================================== #
-                # Display Full GSC Data with Download Option
-                # ================================== #
-                if df is not None and 'query' in df.columns:
-                    st.markdown("---")
-                    st.subheader("Full GSC Data")
-                    st.write("##### Number of results returned by API call:", len(df.index))
+            # ================================== #
+            # Display Full GSC Data with Download Option
+            # ================================== #
+            if df is not None and 'query' in df.columns:
+                st.markdown("---")
+                st.subheader("Full GSC Data")
+                st.write("##### Number of results returned by API call:", len(df.index))
 
-                    col1, col2, col3 = st.columns([1, 1, 1])
+                col1, col2, col3 = st.columns([1, 1, 1])
 
-                    with col1:
-                        st.caption("")
-                        aggrid_checkbox = st.checkbox(
-                            "Ag-Grid mode", help="Tick this box to see your data in Ag-Grid!"
-                        )
-                        st.caption("")
+                with col1:
+                    st.caption("")
+                    aggrid_checkbox = st.checkbox(
+                        "Ag-Grid mode", help="Tick this box to see your data in Ag-Grid!"
+                    )
+                    st.caption("")
 
-                    with col2:
-                        st.caption("")
-                        st.checkbox(
-                            "Widen layout",
-                            key="widen",
-                            help="Tick this box to switch the layout to 'wide' mode",
-                        )
-                        st.caption("")
+                with col2:
+                    st.caption("")
+                    st.checkbox(
+                        "Widen layout",
+                        key="widen",
+                        help="Tick this box to switch the layout to 'wide' mode",
+                    )
+                    st.caption("")
 
-                    # Display DataFrame or AgGrid
-                    if not aggrid_checkbox:
-                        @st.cache_data
-                        def convert_df(df):
-                            return df.to_csv(index=False).encode("utf-8")
+                # Display DataFrame or AgGrid
+                if not aggrid_checkbox:
+                    @st.cache_data
+                    def convert_df(df):
+                        return df.to_csv(index=False).encode("utf-8")
 
-                        csv = convert_df(df)
+                    csv = convert_df(df)
 
-                        st.download_button(
-                            label="Download GSC Data as CSV",
-                            data=csv,
-                            file_name="gsc_data.csv",
-                            mime="text/csv",
-                        )
+                    st.download_button(
+                        label="Download GSC Data as CSV",
+                        data=csv,
+                        file_name="gsc_data.csv",
+                        mime="text/csv",
+                    )
 
-                        st.caption("")
-                        st.dataframe(df, height=500)
-                    else:
-                        df_reset = df.reset_index()
+                    st.caption("")
+                    st.dataframe(df, height=500)
+                else:
+                    df_reset = df.reset_index()
 
-                        gb = GridOptionsBuilder.from_dataframe(df_reset)
-                        gb.configure_default_column(
-                            enablePivot=True, enableValue=True, enableRowGroup=True
-                        )
-                        gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-                        gb.configure_side_bar()
-                        gridOptions = gb.build()
+                    gb = GridOptionsBuilder.from_dataframe(df_reset)
+                    gb.configure_default_column(
+                        enablePivot=True, enableValue=True, enableRowGroup=True
+                    )
+                    gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+                    gb.configure_side_bar()
+                    gridOptions = gb.build()
 
-                        st.info(
-                            """
-                            💡 Tip! Hold the '⇧ Shift' key when selecting rows to select multiple rows at once!
-                            """
-                        )
+                    st.info(
+                        """
+                        💡 Tip! Hold the '⇧ Shift' key when selecting rows to select multiple rows at once!
+                        """
+                    )
 
-                        AgGrid(
-                            df_reset,
-                            gridOptions=gridOptions,
-                            enable_enterprise_modules=True,
-                            update_mode=GridUpdateMode.MODEL_CHANGED,
-                            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-                            height=1000,
-                            fit_columns_on_grid_load=True,
-                            configure_side_bar=True,
-                        )
+                    AgGrid(
+                        df_reset,
+                        gridOptions=gridOptions,
+                        enable_enterprise_modules=True,
+                        update_mode=GridUpdateMode.MODEL_CHANGED,
+                        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+                        height=1000,
+                        fit_columns_on_grid_load=True,
+                        configure_side_bar=True,
+                    )
     except ValueError as ve:
         st.warning("⚠️ You need to sign in to your Google account first!")
 
