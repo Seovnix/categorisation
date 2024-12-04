@@ -1,5 +1,6 @@
 openai
 xlsxwriter
 searchconsole
-searchconsole
 streamlit-aggrid
+streamlit==1.13.0
+streamlit-elements==0.0.2
