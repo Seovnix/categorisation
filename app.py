@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from sentence_transformers import SentenceTransformer, util
 import torch
+import time
 
 # Load the SentenceTransformer model
 @st.cache_resource
@@ -12,7 +13,7 @@ model = load_model()
 
 # Streamlit UI
 st.title("Keyword Category Classifier")
-st.write("Paste your candidate labels and upload a `keywords.txt` file. The app will classify the keywords based on the closest categories.")
+st.write("Paste your candidate labels and upload a `keywords.txt` file. The app will classify the keywords based on the closest category.")
 
 # User input: Candidate labels
 labels_input = st.text_area(
@@ -33,6 +34,7 @@ if labels_input and uploaded_keywords_file:
     else:
         # Encode candidate labels
         st.write("Encoding candidate labels...")
+        start_time = time.time()
         label_embeddings = model.encode(candidate_labels, convert_to_tensor=True)
 
         # Read keywords
@@ -42,34 +44,40 @@ if labels_input and uploaded_keywords_file:
         # Prepare results
         results = []
 
+        # Add progress bar
+        progress_bar = st.progress(0)
+
         # Process each keyword
-        for keyword in keywords:
+        for i, keyword in enumerate(keywords):
             sequence_embedding = model.encode(keyword, convert_to_tensor=True)
             cos_scores = util.cos_sim(sequence_embedding, label_embeddings)[0]
 
-            # Get top 2 results
-            top_results = sorted(
-                zip(cos_scores, candidate_labels),
-                key=lambda x: x[0],
-                reverse=True
-            )[:2]
+            # Get the top result
+            top_result = max(zip(cos_scores, candidate_labels), key=lambda x: x[0])
+            score, label = top_result
 
-            for score, label in top_results:
-                # Split the label into parts
-                label_parts = label.split('>')
-                topic = label_parts[0] if len(label_parts) > 0 else ""
-                category = label_parts[1] if len(label_parts) > 1 else ""
-                subcategory = label_parts[2] if len(label_parts) > 2 else ""
-                subcategory2 = label_parts[3] if len(label_parts) > 3 else ""
+            # Split the label into parts
+            label_parts = label.split('>')
+            topic = label_parts[0] if len(label_parts) > 0 else ""
+            category = label_parts[1] if len(label_parts) > 1 else ""
+            subcategory = label_parts[2] if len(label_parts) > 2 else ""
+            subcategory2 = label_parts[3] if len(label_parts) > 3 else ""
 
-                results.append({
-                    'Keyword': keyword,
-                    'Topic': topic,
-                    'Category': category,
-                    'Subcategory': subcategory,
-                    'Subcategory2': subcategory2,
-                    'Similarity Score': round(score.item(), 3)
-                })
+            results.append({
+                'Keyword': keyword,
+                'Topic': topic,
+                'Category': category,
+                'Subcategory': subcategory,
+                'Subcategory2': subcategory2,
+                'Similarity Score': round(score.item(), 3)
+            })
+
+            # Update progress bar
+            progress_bar.progress((i + 1) / len(keywords))
+
+        # Stop timer and display elapsed time
+        elapsed_time = time.time() - start_time
+        st.success(f"Processing completed in {elapsed_time:.2f} seconds.")
 
         # Convert results to DataFrame
         results_df = pd.DataFrame(results)
