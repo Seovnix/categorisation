@@ -150,7 +150,7 @@ with tab_main:
                     st.warning("🚨 Please sign in via Google OAuth first.")
         else:
             # Fetch Account and Site List
-            @st.cache
+            @st.cache_data
             def get_account_site_list_and_webproperty(token):
                 flow = Flow.from_client_config(
                     {
@@ -462,173 +462,178 @@ with tab_main:
                                 st.warning("🚨 The fetched data does not contain the 'query' dimension.")
                                 st.stop()
 
-                            # ================================== #
-                            # Separate Form for Keyword Categorization
-                            # ================================== #
-                            st.markdown("---")
-                            st.subheader("Keyword Categorization using OpenAI")
+        # ================================== #
+        # Separate Form for Keyword Categorization
+        # ================================== #
+        if df is not None and 'query' in df.columns:
+            st.markdown("---")
+            st.subheader("Keyword Categorization using OpenAI")
 
-                            st.write(
-                                "Categorize the top keywords into relevant categories using OpenAI's GPT-4 model."
+            st.write(
+                "Categorize the top keywords into relevant categories using OpenAI's GPT-4 model."
+            )
+
+            # Upload Candidate Labels in a Separate Form
+            with st.form(key="categorization_form"):
+                label_file = st.file_uploader(
+                    "Upload your candidate labels file (TXT format)",
+                    type="txt",
+                )
+                # **Added Submit Button**
+                submit_categorization = st.form_submit_button(label="Start Categorization")
+
+            if submit_categorization:
+                if label_file is not None:
+                    # Read Candidate Labels
+                    candidate_labels = label_file.read().decode("utf-8").splitlines()
+
+                    if not candidate_labels:
+                        st.warning("🚨 The candidate labels file is empty.")
+                    else:
+                        # Initialize OpenAI API Key
+                        openai_api_key = st.secrets["OPENAI"]["OPENAI_API_KEY"]
+                        openai.api_key = openai_api_key
+
+                        # Function to Categorize a Single Keyword
+                        def categorize_with_openai(keyword, candidate_labels):
+                            prompt = (
+                                f"Given the following categories, classify the following keyword into one appropriate category "
+                                f"based on its meaning:\n\nKeyword: {keyword}\nCategories:\n- " +
+                                "\n- ".join(candidate_labels) +
+                                "\n\nProvide only the category, no other text."
                             )
-
-                            # Upload Candidate Labels in a Separate Form
-                            with st.form(key="categorization_form"):
-                                label_file = st.file_uploader(
-                                    "Upload your candidate labels file (TXT format)",
-                                    type="txt",
+                            try:
+                                response = openai.ChatCompletion.create(
+                                    model="gpt-4",
+                                    messages=[
+                                        {"role": "system", "content": "You are a helpful assistant."},
+                                        {"role": "user", "content": prompt},
+                                    ],
+                                    temperature=0
                                 )
-                                # **Added Submit Button**
-                                submit_categorization = st.form_submit_button(label="Start Categorization")
+                                # Extract the response content
+                                content = response.choices[0].message.content.strip()
+                                return content
+                            except Exception as e:
+                                st.error(f"Error categorizing keyword '{keyword}': {e}")
+                                return None
 
-                            if submit_categorization:
-                                if label_file is not None:
-                                    # Read Candidate Labels
-                                    candidate_labels = label_file.read().decode("utf-8").splitlines()
+                        # Initialize Progress Bar
+                        progress_bar = st.progress(0)
+                        categorized_results = []
 
-                                    if not candidate_labels:
-                                        st.warning("🚨 The candidate labels file is empty.")
-                                    else:
-                                        # Initialize OpenAI API Key
-                                        openai_api_key = st.secrets["OPENAI"]["OPENAI_API_KEY"]
-                                        openai.api_key = openai_api_key
+                        # Iterate through Top Keywords and Categorize
+                        for idx, keyword in enumerate(top_keywords):
+                            category = categorize_with_openai(keyword, candidate_labels)
+                            if category:
+                                categorized_results.append({
+                                    'Keyword': keyword,
+                                    'Category': category
+                                })
+                            progress_bar.progress((idx + 1) / len(top_keywords))
 
-                                        # Function to Categorize a Single Keyword
-                                        def categorize_with_openai(keyword, candidate_labels):
-                                            prompt = (
-                                                f"Given the following categories, classify the following keyword into one appropriate category "
-                                                f"based on its meaning:\n\nKeyword: {keyword}\nCategories:\n- " +
-                                                "\n- ".join(candidate_labels) +
-                                                "\n\nProvide only the category, no other text."
-                                            )
-                                            try:
-                                                response = openai.ChatCompletion.create(
-                                                    model="gpt-4",
-                                                    messages=[
-                                                        {"role": "system", "content": "You are a helpful assistant."},
-                                                        {"role": "user", "content": prompt},
-                                                    ],
-                                                    temperature=0
-                                                )
-                                                # Extract the response content
-                                                content = response.choices[0].message.content.strip()
-                                                return content
-                                            except Exception as e:
-                                                st.error(f"Error categorizing keyword '{keyword}': {e}")
-                                                return None
+                        # Convert Results to DataFrame
+                        if categorized_results:
+                            categorized_df = pd.DataFrame(categorized_results)
+                            st.success("✅ Keyword categorization completed!")
 
-                                        # Initialize Progress Bar
-                                        progress_bar = st.progress(0)
-                                        categorized_results = []
+                            # Display Categorization Results
+                            st.write("### Categorization Results")
+                            st.dataframe(categorized_df)
 
-                                        # Iterate through Top Keywords and Categorize
-                                        for idx, keyword in enumerate(top_keywords):
-                                            category = categorize_with_openai(keyword, candidate_labels)
-                                            if category:
-                                                categorized_results.append({
-                                                    'Keyword': keyword,
-                                                    'Category': category
-                                                })
-                                            progress_bar.progress((idx + 1) / len(top_keywords))
+                            # Download Button for Excel
+                            @st.cache_data
+                            def convert_df_to_excel(df):
+                                output = BytesIO()
+                                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                                    df.to_excel(writer, index=False)
+                                processed_data = output.getvalue()
+                                return processed_data
 
-                                        # Convert Results to DataFrame
-                                        if categorized_results:
-                                            categorized_df = pd.DataFrame(categorized_results)
-                                            st.success("✅ Keyword categorization completed!")
+                            st.download_button(
+                                label="Download Results as Excel",
+                                data=convert_df_to_excel(categorized_df),
+                                file_name='classification_results.xlsx',
+                                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            )
+                        else:
+                            st.warning("🚨 No categorization results to display.")
+                else:
+                    st.warning("🚨 Please upload a candidate labels file (TXT format).")
+        # ================================== #
+        # End of Keyword Categorization
+        # ================================== #
 
-                                            # Display Categorization Results
-                                            st.write("### Categorization Results")
-                                            st.dataframe(categorized_df)
+        # ================================== #
+        # Display Full GSC Data with Download Option
+        # ================================== #
+        if df is not None and 'query' in df.columns:
+            st.markdown("---")
+            st.subheader("Full GSC Data")
+            st.write("##### Number of results returned by API call:", len(df.index))
 
-                                            # Download Button for Excel
-                                            @st.cache
-                                            def convert_df_to_excel(df):
-                                                output = BytesIO()
-                                                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                                                    df.to_excel(writer, index=False)
-                                                processed_data = output.getvalue()
-                                                return processed_data
+            col1, col2, col3 = st.columns([1, 1, 1])
 
-                                            st.download_button(
-                                                label="Download Results as Excel",
-                                                data=convert_df_to_excel(categorized_df),
-                                                file_name='classification_results.xlsx',
-                                                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                            )
-                                        else:
-                                            st.warning("🚨 No categorization results to display.")
-                                else:
-                                    st.warning("🚨 Please upload a candidate labels file (TXT format).")
-                            # =================== End of OpenAI Keyword Categorization =================== #
+            with col1:
+                st.caption("")
+                aggrid_checkbox = st.checkbox(
+                    "Ag-Grid mode", help="Tick this box to see your data in Ag-Grid!"
+                )
+                st.caption("")
 
-                            st.markdown("---")
+            with col2:
+                st.caption("")
+                st.checkbox(
+                    "Widen layout",
+                    key="widen",
+                    help="Tick this box to switch the layout to 'wide' mode",
+                )
+                st.caption("")
 
-                            # Display Full GSC Data with Download Option
-                            st.subheader("Full GSC Data")
-                            st.write("##### Number of results returned by API call:", len(df.index))
+            # Display DataFrame or AgGrid
+            if not aggrid_checkbox:
+                @st.cache_data
+                def convert_df(df):
+                    return df.to_csv(index=False).encode("utf-8")
 
-                            col1, col2, col3 = st.columns([1, 1, 1])
+                csv = convert_df(df)
 
-                            with col1:
-                                st.caption("")
-                                aggrid_checkbox = st.checkbox(
-                                    "Ag-Grid mode", help="Tick this box to see your data in Ag-Grid!"
-                                )
-                                st.caption("")
+                st.download_button(
+                    label="Download GSC Data as CSV",
+                    data=csv,
+                    file_name="gsc_data.csv",
+                    mime="text/csv",
+                )
 
-                            with col2:
-                                st.caption("")
-                                st.checkbox(
-                                    "Widen layout",
-                                    key="widen",
-                                    help="Tick this box to switch the layout to 'wide' mode",
-                                )
-                                st.caption("")
+                st.caption("")
+                st.dataframe(df, height=500)
+            else:
+                df_reset = df.reset_index()
 
-                            # Display DataFrame or AgGrid
-                            if not aggrid_checkbox:
-                                @st.cache
-                                def convert_df(df):
-                                    return df.to_csv(index=False).encode("utf-8")
+                gb = GridOptionsBuilder.from_dataframe(df_reset)
+                gb.configure_default_column(
+                    enablePivot=True, enableValue=True, enableRowGroup=True
+                )
+                gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+                gb.configure_side_bar()
+                gridOptions = gb.build()
 
-                                csv = convert_df(df)
+                st.info(
+                    """
+                    💡 Tip! Hold the '⇧ Shift' key when selecting rows to select multiple rows at once!
+                    """
+                )
 
-                                st.download_button(
-                                    label="Download GSC Data as CSV",
-                                    data=csv,
-                                    file_name="gsc_data.csv",
-                                    mime="text/csv",
-                                )
-
-                                st.caption("")
-                                st.dataframe(df, height=500)
-                            else:
-                                df_reset = df.reset_index()
-
-                                gb = GridOptionsBuilder.from_dataframe(df_reset)
-                                gb.configure_default_column(
-                                    enablePivot=True, enableValue=True, enableRowGroup=True
-                                )
-                                gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-                                gb.configure_side_bar()
-                                gridOptions = gb.build()
-
-                                st.info(
-                                    """
-                                    💡 Tip! Hold the '⇧ Shift' key when selecting rows to select multiple rows at once!
-                                    """
-                                )
-
-                                AgGrid(
-                                    df_reset,
-                                    gridOptions=gridOptions,
-                                    enable_enterprise_modules=True,
-                                    update_mode=GridUpdateMode.MODEL_CHANGED,
-                                    data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-                                    height=1000,
-                                    fit_columns_on_grid_load=True,
-                                    configure_side_bar=True,
-                                )
+                AgGrid(
+                    df_reset,
+                    gridOptions=gridOptions,
+                    enable_enterprise_modules=True,
+                    update_mode=GridUpdateMode.MODEL_CHANGED,
+                    data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+                    height=1000,
+                    fit_columns_on_grid_load=True,
+                    configure_side_bar=True,
+                )
     except ValueError as ve:
         st.warning("⚠️ You need to sign in to your Google account first!")
 
@@ -642,32 +647,32 @@ with tab_about:
     st.write("")
     st.write(
         """
-    
+
     #### About this App
-    
+
     * ✔️ Connect to the [Google Search Console API](https://developers.google.com/webmaster-tools) with OAuth.
     * ✔️ Fetch and view your website's search performance data.
     * ✔️ Automatically extract and categorize the top 50 keywords using OpenAI's GPT-4.
     * ✔️ Download your data and categorization results in CSV and Excel formats.
-    
+
     ✍️ You can read the blog post [here](https://blog.streamlit.io/p/e89fd54e-e6cd-4e00-8a59-39e87536b260/) for more information.
-    
+
     #### Going Beyond the `25K` Row Limit
-    
+
     * There's a `25K` row limit per API call on the [Cloud](https://streamlit.io/cloud) version to prevent crashes.
     * You can remove that limit by forking this code and adjusting the `ROW_CAP` variable in the script.
-    
+
     #### Kudos
-    
+
     This app relies on Josh Carty's excellent [Search Console Python wrapper](https://github.com/joshcarty/google-searchconsole). Big kudos to him for creating it!
-    
+
     #### Questions, Comments, or Report a 🐛?
-    
+
     * If you have any questions or comments, please DM [me](https://twitter.com/DataChaz). Alternatively, you can ask the [Streamlit community](https://discuss.streamlit.io).
     * If you find a bug, please raise an issue in [Github](https://github.com/CharlyWargnier/google-search-console-connector/pulls).
-    
+
     #### Known Bugs
     * You can filter any dimension in the table even if the dimension hasn't been pre-selected. I'm working on a fix for this.
-    
+
     """
     )
