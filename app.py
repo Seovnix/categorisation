@@ -1,66 +1,86 @@
-import streamlit as st
-import pandas as pd
 import openai
-import tempfile
+import pandas as pd
+import streamlit as st
 
-# Use st.secrets to set your OpenAI API key
-openai.api_key = st.secrets["OPENAI_API_KEY"]
-client = openai.OpenAI(api_key=openai.api_key)
+# Streamlit Secrets Management for OpenAI API Key
+api_key = st.secrets["OPENAI_API_KEY"]
+openai.api_key = api_key
 
-# Streamlit app setup
-st.title("Keyword Categorizer")
-st.write("Upload your keywords file and input your categories.")
+# Streamlit interface
+st.title("Keyword Categorization using OpenAI")
 
-# Upload keywords file
-uploaded_file = st.file_uploader("Choose a keywords file (TXT)", type="txt")
+# File uploader for candidate labels
+st.subheader("Upload Candidate Labels")
+label_file = st.file_uploader("Upload your candidate labels file (TXT format)", type="txt")
 
-# Input categories
-categories_text = st.text_area("Paste your candidate categories here", height=300)
+# File uploader for keywords
+st.subheader("Upload Keywords")
+keyword_file = st.file_uploader("Upload your keywords file (TXT format)", type="txt")
 
-if uploaded_file and categories_text:
-    # Convert categories to list
-    candidate_labels = [label.strip() for label in categories_text.splitlines() if label.strip()]
-    
-    # Read keywords from the uploaded file
-    keywords = uploaded_file.getvalue().decode("utf-8").splitlines()
+# Check if both files are uploaded
+if label_file is not None and keyword_file is not None:
+    # Read the candidate labels from the uploaded file
+    candidate_labels = label_file.read().decode("utf-8").splitlines()
+
+    # Read the keywords from the uploaded file
+    keywords = keyword_file.read().decode("utf-8").splitlines()
 
     # Prepare the output data
     results = []
 
-    # Function to use OpenAI for categorization
+    # Function to use the OpenAI model for categorization
     def categorize_with_openai(keyword, candidate_labels):
-        prompt = f"Classify the keyword '{keyword}' into one or two categories:\n\nCategories:\n- " + "\n- ".join(candidate_labels) + "\n\n"
-        response = client.chat.completions.create(
+        prompt = (f"Given the following categories, classify the following keyword into one appropriate category "
+                  f"based on its meaning:\n\nKeyword: {keyword}\nCategories:\n- " +
+                  "\n- ".join(candidate_labels) +
+                  "\n\n Provide only the category, no other text.")
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini",  # Ensure this is the correct model ID
             messages=[{"role": "user", "content": prompt}],
-            model="gpt-4o",
             temperature=0.05  # Low temperature for deterministic results
         )
+
         choices = response.choices[0].message.content.strip().split('\n')[:2]
         return [choice.strip() for choice in choices]
 
-    # Process button
-    if st.button("Classify Keywords"):
-        with st.spinner('Classifying keywords...'):
-            for keyword in keywords:
-                top_categories = categorize_with_openai(keyword, candidate_labels)
-                for category in top_categories:
-                    if category:
-                        parts = category.split(">")
-                        while len(parts) < 5:  # Ensure we have 5 columns
-                            parts.append("")
-                        results.append({
-                            'Keyword': keyword,
-                            'Topic': parts[0],
-                            'Category': parts[1] if len(parts) > 1 else "",
-                            'Subcategory': parts[2] if len(parts) > 2 else "",
-                            'Subcategory2': parts[3] if len(parts) > 3 else ""
-                        })
+    # Initialize a progress bar
+    progress_bar = st.progress(0)
 
-        # Convert results to DataFrame
+    # Loop through each keyword
+    for index, keyword in enumerate(keywords):
+        # Get the top categories using OpenAI
+        top_categories = categorize_with_openai(keyword, candidate_labels)
+
+        # Append results to the output list
+        for category in top_categories:
+            split_category = category.strip('>').strip().split('>')
+            results.append({
+                'Keyword': keyword,
+                'Topic': split_category[0] if len(split_category) > 0 else '',
+                'Category': split_category[1] if len(split_category) > 1 else '',
+                'Subcategory': split_category[2] if len(split_category) > 2 else '',
+                'Subcategory2': split_category[3] if len(split_category) > 3 else ''
+            })
+        
+        # Update progress bar
+        progress_bar.progress((index + 1) / len(keywords))
+
+    # Display results as a table and offer download option
+    if results:
         df = pd.DataFrame(results)
+        st.write("Categorization Results", df)
 
-        # Display results and offer download
-        st.success("Classification complete!")
-        st.dataframe(df)
-        csv = df.to_csv(index=False)
-        st.download_button("Download CSV", csv, "classification_results.csv", "text/csv")
+        # Button to download the dataframe as an Excel file
+        @st.cache
+        def convert_df_to_excel(df):
+            return df.to_excel(index=False)
+
+        if st.download_button(
+            label="Download Results as Excel",
+            data=convert_df_to_excel(df),
+            file_name='classification_results.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ):
+            st.write("Download initiated!")
+    else:
+        st.write("No results to display yet.")
