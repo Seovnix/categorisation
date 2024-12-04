@@ -7,7 +7,7 @@ import time
 # Load the SentenceTransformer model
 @st.cache_resource
 def load_model():
-    return SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', device='cpu', cache_folder='./')
+    return SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu', cache_folder='./')
 
 model = load_model()
 
