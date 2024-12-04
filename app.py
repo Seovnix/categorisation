@@ -1,9 +1,8 @@
-import asyncio
 import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-# Imports for Search Console
+# Imports for Google Search Console
 import searchconsole
 from apiclient import discovery
 from google_auth_oauthlib.flow import Flow
@@ -71,8 +70,9 @@ with tab_main:
     # Callback function for OAuth form submission
     def gsc_form_callback():
         st.session_state.gsc_token_received = True
-        if "code" in st.experimental_get_query_params():
-            code = st.experimental_get_query_params()["code"][0]
+        query_params = st.experimental_get_query_params()
+        if "code" in query_params:
+            code = query_params["code"][0]
             st.session_state.gsc_token_input = code
         else:
             st.warning("🚨 Authorization code not found. Please try signing in again.")
@@ -82,26 +82,34 @@ with tab_main:
         st.markdown("")
 
         # Custom Elements for Sign-in Button
-        from streamlit_elements import Elements
+        # If you don't have streamlit_elements installed, you can use a regular link or button
+        try:
+            from streamlit_elements import Elements
+            mt = Elements()
 
-        mt = Elements()
+            mt.button(
+                "Sign-in with Google",
+                target="_blank",
+                size="large",
+                variant="contained",
+                # start_icon=mt.icons.exit_to_app,  # Uncomment if icons are properly set
+                onclick="none",
+                style={"color": "#FFFFFF", "background": "#FF4B4B"},
+                href="https://accounts.google.com/o/oauth2/auth?response_type=code&client_id="
+                + client_id
+                + "&redirect_uri="
+                + redirect_uri
+                + "&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent",
+            )
 
-        mt.button(
-            "Sign-in with Google",
-            target="_blank",
-            size="large",
-            variant="contained",
-            start_icon=mt.icons.exit_to_app,
-            onclick="none",
-            style={"color": "#FFFFFF", "background": "#FF4B4B"},
-            href="https://accounts.google.com/o/oauth2/auth?response_type=code&client_id="
-            + client_id
-            + "&redirect_uri="
-            + redirect_uri
-            + "&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent",
-        )
-
-        mt.show(key="oauth_button")
+            mt.show(key="oauth_button")
+        except Exception as e:
+            st.markdown("[Sign-in with Google](https://accounts.google.com/o/oauth2/auth?response_type=code&client_id="
+                        + client_id
+                        + "&redirect_uri="
+                        + redirect_uri
+                        + "&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent)"
+                        )
 
         # OAuth Credentials Setup
         credentials = {
@@ -175,15 +183,15 @@ with tab_main:
             @st.experimental_singleton
             def get_account_site_list_and_webproperty(token):
                 flow.fetch_token(code=token)
-                credentials = flow.credentials
+                credentials_fetched = flow.credentials
                 service = discovery.build(
                     serviceName="webmasters",
                     version="v3",
-                    credentials=credentials,
+                    credentials=credentials_fetched,
                     cache_discovery=False,
                 )
 
-                account = searchconsole.account.Account(service, credentials)
+                account = searchconsole.account.Account(service, credentials_fetched)
                 site_list = service.sites().list().execute()
                 return account, site_list
 
@@ -457,7 +465,7 @@ with tab_main:
                         st.stop()
                     else:
                         st.success(f"✅ Data fetched successfully! Total rows: {len(df)}")
-            
+                
                         # Allow user to select metric for top keywords (e.g., clicks, impressions)
                         metric = st.selectbox(
                             "Select metric to determine top keywords",
@@ -476,8 +484,7 @@ with tab_main:
                             )
                             top_keywords = top_keywords_df['query'].tolist()
                             st.write(f"### Top {TOP_N_KEYWORDS} Keywords based on {metric.capitalize()}")
-                            st.write(top_keywords_df)
-
+                            st.dataframe(top_keywords_df)
                         else:
                             st.warning("🚨 The fetched data does not contain the 'query' dimension.")
                             st.stop()
@@ -549,7 +556,6 @@ with tab_main:
                                                 'Category': category
                                             })
                                         progress_bar.progress((idx + 1) / len(top_keywords))
-                                        st.experimental_rerun()  # To update progress bar
 
                                     # Convert Results to DataFrame
                                     if categorized_results:
@@ -592,7 +598,7 @@ with tab_main:
                         with col1:
                             st.caption("")
                             aggrid_checkbox = st.checkbox(
-                                "Ag-Grid mode", help="Tick this box to see your data in Ag-grid!"
+                                "Ag-Grid mode", help="Tick this box to see your data in Ag-Grid!"
                             )
                             st.caption("")
 
@@ -650,9 +656,6 @@ with tab_main:
                                 fit_columns_on_grid_load=True,
                                 configure_side_bar=True,
                             )
-        else:
-            st.warning("⚠️ You need to sign in to your Google account first!")
-
     except ValueError as ve:
         st.warning("⚠️ You need to sign in to your Google account first!")
 
