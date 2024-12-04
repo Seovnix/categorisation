@@ -87,6 +87,7 @@ with tab_main:
             f"""
             [🔗 Sign-in with Google](https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent)
             """
+
         )
 
         # **Added Submit Button**
@@ -502,7 +503,7 @@ with tab_main:
                                             )
                                             try:
                                                 response = openai.ChatCompletion.create(
-                                                    model="GPT-4o mini",
+                                                    model="gpt-4",
                                                     messages=[
                                                         {"role": "system", "content": "You are a helpful assistant."},
                                                         {"role": "user", "content": prompt},
