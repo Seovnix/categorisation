@@ -15,9 +15,6 @@ from st_aggrid import GridUpdateMode, DataReturnMode
 # Import for OpenAI
 import openai
 
-# Import other necessary libraries
-import os
-
 ###############################################################################
 # Streamlit Page Configuration
 ###############################################################################
@@ -86,7 +83,6 @@ with tab_main:
             f"""
             [🔗 Sign-in with Google](https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent)
             """
-
         )
 
         # **Added Submit Button**
@@ -114,9 +110,9 @@ with tab_main:
         # Display OAuth Token (for debugging purposes)
         with st.expander("Check your OAuth token"):
             code = st.text_input(
-                "",
+                "OAuth Token",
                 key="gsc_token_input",
-                label_visibility="collapsed",
+                label_visibility="visible",
             )
 
         st.write("")
@@ -236,6 +232,20 @@ with tab_main:
                     col1, col2 = st.columns(2)
 
                     with col1:
+                        search_type = st.selectbox(
+                            "Search Type",
+                            ("web", "news", "video", "googleNews", "image"),
+                            help="""
+                        Specify the search type you want to retrieve:
+                        - **Web**: All search results.
+                        - **Image**: Image search results.
+                        - **Video**: Video search results.
+                        - **News**: News search results.
+                        - **Google News**: Google News search results.
+                        """,
+                        )
+
+                    with col2:
                         date_range = st.date_input(
                             "Select Date Range",
                             value=(pd.to_datetime('today') - pd.Timedelta(days=30), pd.to_datetime('today')),
@@ -246,20 +256,6 @@ with tab_main:
                             selected_days = (end_date - start_date).days
                         else:
                             selected_days = 30  # Default 30 days
-
-                    with col2:
-                        search_type = st.selectbox(
-                            "Search Type",
-                            ("web", "video", "image", "news", "googleNews"),
-                            help="""
-                        Specify the search type you want to retrieve:
-                        - **Web**: All search results.
-                        - **Image**: Image search results.
-                        - **Video**: Video search results.
-                        - **News**: News search results.
-                        - **Google News**: Google News search results.
-                        """,
-                        )
 
                     st.write("")
 
@@ -634,23 +630,23 @@ with tab_about:
     * ✔️ Fetch and view your website's search performance data.
     * ✔️ Automatically extract and categorize the top 50 keywords using OpenAI's GPT-4.
     * ✔️ Download your data and categorization results in CSV and Excel formats.
-    
+
     #### Going Beyond the `25K` Row Limit
-    
+
     * There's a `25K` row limit per API call on the [Cloud](https://streamlit.io/cloud) version to prevent crashes.
     * You can remove that limit by forking this code and adjusting the `ROW_CAP` variable in the script.
-    
+
     #### Kudos
-    
+
     This app relies on Josh Carty's excellent [Search Console Python wrapper](https://github.com/joshcarty/google-searchconsole). Big kudos to him for creating it!
-    
+
     #### Questions, Comments, or Report a 🐛?
-    
+
     * If you have any questions or comments, please DM [me](https://twitter.com/DataChaz). Alternatively, you can ask the [Streamlit community](https://discuss.streamlit.io).
     * If you find a bug, please raise an issue in [Github](https://github.com/CharlyWargnier/google-search-console-connector/pulls).
-    
+
     #### Known Bugs
     * You can filter any dimension in the table even if the dimension hasn't been pre-selected. I'm working on a fix for this.
-    
+
     """
     )
