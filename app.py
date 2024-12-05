@@ -91,27 +91,24 @@ if "gsc_token_input" not in st.session_state:
 if "gsc_token_received" not in st.session_state:
     st.session_state["gsc_token_received"] = False
 
-def gsc_form_callback():
-    st.session_state.gsc_token_received = True
-    query_params = st.query_params
-    if "code" in query_params:
-        code = query_params["code"][0]
-        st.session_state.gsc_token_input = code
-    else:
-        st.warning("🚨 Authorization code not found. Please try signing in again.")
-
-# OAuth Form
-with st.sidebar.form(key="gsc_oauth_form"):
+# Provide instructions for OAuth code retrieval
+with st.sidebar:
     st.markdown(
         f"""
-        [🔗 Sign-in with Google](https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent)
+        1. [Sign-in with Google](https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent)
+        2. Copy the authorization code.
+        3. Paste it below and press enter.
         """
     )
-    submit_oauth = st.form_submit_button(label="Access GSC API")
-    if submit_oauth:
-        gsc_form_callback()
 
-df = None
+    # Manual entry for the OAuth authorization code
+    auth_code_input = st.text_input("Enter Google OAuth Code", value="", key="auth_code")
+
+    if auth_code_input:
+        st.session_state["gsc_token_input"] = auth_code_input
+        st.session_state["gsc_token_received"] = True
+        st.success("Authorization code received.")
+
 if st.session_state.gsc_token_received:
     try:
         # Fetch Account and Site List
