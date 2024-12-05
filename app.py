@@ -4,7 +4,7 @@ from io import BytesIO
 
 # Imports for Google Search Console
 import searchconsole
-from googleapiclient import discovery
+from apiclient import discovery
 from google_auth_oauthlib.flow import Flow
 
 # Imports for AgGrid
@@ -19,22 +19,11 @@ import openai
 # Streamlit Page Configuration
 ###############################################################################
 
-# Initialize session state variables
-if "widen" not in st.session_state:
-    st.session_state["widen"] = False
-if "gsc_token_input" not in st.session_state:
-    st.session_state["gsc_token_input"] = ""
-if "gsc_token_received" not in st.session_state:
-    st.session_state["gsc_token_received"] = False
-if "df" not in st.session_state:
-    st.session_state["df"] = None
-if "top_keywords" not in st.session_state:
-    st.session_state["top_keywords"] = []
-if "categorized_df" not in st.session_state:
-    st.session_state["categorized_df"] = None
-
 # Set the initial layout
-layout = "wide" if st.session_state.widen else "centered"
+if "widen" not in st.session_state:
+    layout = "centered"
+else:
+    layout = "wide" if st.session_state.widen else "centered"
 
 st.set_page_config(
     layout=layout, page_title="GSC Connector & Keyword Categorizer", page_icon="🔌📝"
@@ -69,10 +58,16 @@ with tab_main:
 
     st.markdown("")
 
+    # Initialize session state for OAuth tokens
+    if "gsc_token_input" not in st.session_state:
+        st.session_state["gsc_token_input"] = ""
+    if "gsc_token_received" not in st.session_state:
+        st.session_state["gsc_token_received"] = False
+
     # Callback function for OAuth form submission
     def gsc_form_callback():
         st.session_state.gsc_token_received = True
-        query_params = st.experimental_get_query_params()
+        query_params = st.query_params
         if "code" in query_params:
             code = query_params["code"][0]
             st.session_state.gsc_token_input = code
@@ -116,14 +111,16 @@ with tab_main:
         with st.expander("Check your OAuth token"):
             st.text_input(
                 "OAuth Token",
-                value=st.session_state.gsc_token_input,
-                disabled=True,
+                key="gsc_token_input",
                 label_visibility="visible",
             )
 
         st.write("")
 
     # Sidebar Footer removed as per user request
+
+    # Initialize df as None
+    df = None
 
     # Handle OAuth and Fetch GSC Data
     try:
@@ -152,7 +149,7 @@ with tab_main:
                             "client_secret": client_secret,
                             "redirect_uris": [redirect_uri],
                             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                            "token_uri": "https://oauth2.googleapis.com/token",
+                            "token_uri": "https://accounts.google.com/o/oauth2/token",
                         }
                     },
                     scopes=["https://www.googleapis.com/auth/webmasters.readonly"],
@@ -431,7 +428,6 @@ with tab_main:
                             st.stop()
                         else:
                             st.success(f"✅ Data fetched successfully! Total rows: {len(df)}")
-                            st.session_state.df = df  # Store df in session state
 
                             # Allow user to select metric for top keywords (e.g., clicks, impressions)
                             metric = st.selectbox(
@@ -450,7 +446,6 @@ with tab_main:
                                     .head(TOP_N_KEYWORDS)
                                 )
                                 top_keywords = top_keywords_df['query'].tolist()
-                                st.session_state.top_keywords = top_keywords  # Store top keywords
                                 st.write(f"### Top {TOP_N_KEYWORDS} Keywords based on {metric.capitalize()}")
                                 st.dataframe(top_keywords_df)
                             else:
@@ -460,7 +455,7 @@ with tab_main:
                 # ================================== #
                 # Separate Form for Keyword Categorization
                 # ================================== #
-                if st.session_state.df is not None and 'query' in st.session_state.df.columns:
+                if df is not None and 'query' in df.columns:
                     st.markdown("---")
                     st.subheader("Keyword Categorization using OpenAI")
 
@@ -522,19 +517,18 @@ with tab_main:
                                 categorized_results = []
 
                                 # Iterate through Top Keywords and Categorize
-                                for idx, keyword in enumerate(st.session_state.top_keywords):
+                                for idx, keyword in enumerate(top_keywords):
                                     category = categorize_with_openai(keyword, candidate_labels)
                                     if category:
                                         categorized_results.append({
                                             'Keyword': keyword,
                                             'Category': category
                                         })
-                                    progress_bar.progress((idx + 1) / len(st.session_state.top_keywords))
+                                    progress_bar.progress((idx + 1) / len(top_keywords))
 
                                 # Convert Results to DataFrame
                                 if categorized_results:
                                     categorized_df = pd.DataFrame(categorized_results)
-                                    st.session_state.categorized_df = categorized_df  # Store categorized results
                                     st.success("✅ Keyword categorization completed!")
 
                                     # Display Categorization Results
@@ -567,10 +561,10 @@ with tab_main:
                 # ================================== #
                 # Display Full GSC Data with Download Option
                 # ================================== #
-                if st.session_state.df is not None and 'query' in st.session_state.df.columns:
+                if df is not None and 'query' in df.columns:
                     st.markdown("---")
                     st.subheader("Full GSC Data")
-                    st.write("##### Number of results returned by API call:", len(st.session_state.df.index))
+                    st.write("##### Number of results returned by API call:", len(df.index))
 
                     col1, col2, col3 = st.columns([1, 1, 1])
 
@@ -583,15 +577,11 @@ with tab_main:
 
                     with col2:
                         st.caption("")
-                        widen_checkbox = st.checkbox(
+                        st.checkbox(
                             "Widen layout",
                             key="widen",
                             help="Tick this box to switch the layout to 'wide' mode",
-                            value=st.session_state.widen,
                         )
-                        if widen_checkbox != st.session_state.widen:
-                            st.session_state.widen = widen_checkbox
-                            st.experimental_rerun()
                         st.caption("")
 
                     # Display DataFrame or AgGrid
@@ -600,7 +590,7 @@ with tab_main:
                         def convert_df(df):
                             return df.to_csv(index=False).encode("utf-8")
 
-                        csv = convert_df(st.session_state.df)
+                        csv = convert_df(df)
 
                         st.download_button(
                             label="Download GSC Data as CSV",
@@ -610,9 +600,9 @@ with tab_main:
                         )
 
                         st.caption("")
-                        st.dataframe(st.session_state.df, height=500)
+                        st.dataframe(df, height=500)
                     else:
-                        df_reset = st.session_state.df.reset_index()
+                        df_reset = df.reset_index()
 
                         gb = GridOptionsBuilder.from_dataframe(df_reset)
                         gb.configure_default_column(
@@ -638,11 +628,7 @@ with tab_main:
                             fit_columns_on_grid_load=True,
                             configure_side_bar=True,
                         )
-                # ================================== #
-                # End of Full GSC Data Display
-                # ================================== #
-
-    except ValueError:
+    except ValueError as ve:
         st.warning("⚠️ You need to sign in to your Google account first!")
 
     except IndexError:
