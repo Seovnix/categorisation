@@ -95,7 +95,7 @@ if "gsc_token_received" not in st.session_state:
 with st.sidebar:
     st.markdown(
         f"""
-        1. [Sign-in with Google](https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent)
+        1. [Connecte toi avec GSC](https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}&scope=https://www.googleapis.com/auth/webmasters.readonly&access_type=offline&prompt=consent)
         2. Copy the authorization code.
         3. Paste it below and press enter.
         """
