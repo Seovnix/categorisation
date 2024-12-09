@@ -3,7 +3,7 @@ import pandas as pd
 from io import BytesIO
 
 # Imports for Google Search Console
-import searchconsole
+import srchconsole
 from apiclient import discovery
 from google_auth_oauthlib.flow import Flow
 
